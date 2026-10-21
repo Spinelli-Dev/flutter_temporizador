@@ -16,22 +16,26 @@ class _HomeScreenState extends State<HomeScreen> {
   EstadoOvo _estado = EstadoOvo.cru;
   int _segundos = 0;
 
-  void _iniciarPreparo() {
+  Future<void> _iniciarPreparo() async {
+    if (_service.emAndamento) return;
+
     setState(() {
       _estado = EstadoOvo.cru;
       _segundos = 0;
     });
 
-    // Chamada síncrona: a tela fica travada durante os 9 segundos e só
-    // redesenha com o último valor informado pelo callback.
-    _service.cozinhar(
+    await _service.cozinhar(
       onProgresso: (segundo, estado) {
+        if (!mounted) return;
         setState(() {
           _segundos = segundo;
           _estado = estado;
         });
       },
     );
+
+    // Atualiza os botões depois que o serviço encerra o preparo.
+    if (mounted) setState(() {});
   }
 
   void _cancelar() {
@@ -42,37 +46,60 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    _service.cancelar();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final emAndamento = _service.emAndamento;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Temporizador de Ovo Cozido')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _estado.descricao,
-                style: Theme.of(context).textTheme.headlineMedium,
-                textAlign: TextAlign.center,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Centraliza em telas grandes e permite rolagem em telas pequenas.
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - 48).clamp(
+                    0,
+                    double.infinity,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _estado.descricao,
+                      style: Theme.of(context).textTheme.headlineMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Tempo: $_segundos s / ${CozinhadorService.tempoTotal} s',
+                      style: Theme.of(context).textTheme.titleLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: emAndamento ? null : _iniciarPreparo,
+                      child: const Text('Iniciar Preparo'),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: emAndamento ? _cancelar : null,
+                      child: const Text('Cancelar / Apagar Fogo'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Tempo: $_segundos s / ${CozinhadorService.tempoTotal} s',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _iniciarPreparo,
-                child: const Text('Iniciar Preparo'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _cancelar,
-                child: const Text('Cancelar / Apagar Fogo'),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
